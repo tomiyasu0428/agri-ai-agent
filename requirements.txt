@@ -5,10 +5,10 @@ langchain-community==0.0.38
 pymongo==4.7.2
 motor==3.4.0
 
-# Google Cloud
-google-cloud-functions-framework==3.5.0
-google-cloud-secret-manager==2.18.3
-google-cloud-monitoring==2.19.0
+# Google Cloud (optional for now)
+# google-cloud-functions-framework==3.5.0
+# google-cloud-secret-manager==2.18.3
+# google-cloud-monitoring==2.19.0
 
 # LINE Bot
 line-bot-sdk==3.9.0
@@ -16,7 +16,6 @@ line-bot-sdk==3.9.0
 # Utilities
 python-dotenv==1.0.0
 pydantic==2.7.1
-asyncio==3.4.3
 
 # Airtable integration
 pyairtable==2.3.3
