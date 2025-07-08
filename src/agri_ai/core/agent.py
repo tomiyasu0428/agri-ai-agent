@@ -13,6 +13,8 @@ from langchain.schema import SystemMessage
 from ..tools.agricultural_tools import create_agricultural_tools
 from ..core.database import AgriDatabase
 from ..utils.config import get_settings
+from ..nlp.report_parser import WorkReportParser
+from ..nlp.context_manager import ContextManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,10 @@ class AgriAIAgent:
     def __init__(self, agri_db: AgriDatabase):
         self.agri_db = agri_db
         self.settings = get_settings()
+        
+        # Initialize NLP modules
+        self.report_parser = WorkReportParser()
+        self.context_manager = ContextManager()
         
         # Initialize LLM
         self.llm = ChatOpenAI(
@@ -80,8 +86,30 @@ class AgriAIAgent:
     async def process_message(self, user_message: str, user_id: str) -> str:
         """Process a user message and return AI response."""
         try:
-            # Add user context to the message
-            contextualized_message = f"ユーザーID: {user_id}\nメッセージ: {user_message}"
+            # Add message to conversation history
+            self.context_manager.add_question_to_history(user_id, user_message)
+            
+            # Resolve ellipsis using context
+            resolved_message = self.context_manager.resolve_ellipsis(user_id, user_message)
+            
+            # Infer context from message
+            inferred_context = self.context_manager.infer_context_from_message(user_id, resolved_message)
+            if inferred_context:
+                self.context_manager.update_context(user_id, **inferred_context)
+            
+            # Get relevant context
+            relevant_context = self.context_manager.get_relevant_context(user_id, resolved_message)
+            
+            # Check if message is a work report
+            if self._is_work_report(resolved_message):
+                return await self._process_work_report(resolved_message, user_id)
+            
+            # Prepare contextualized message
+            context_info = ""
+            if relevant_context:
+                context_info = f"文脈情報: {relevant_context}\n"
+            
+            contextualized_message = f"ユーザーID: {user_id}\n{context_info}メッセージ: {resolved_message}"
             
             # Get agent response
             response = await self.agent.arun(input=contextualized_message)
@@ -92,6 +120,70 @@ class AgriAIAgent:
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             return f"申し訳ございません。処理中にエラーが発生しました。もう一度お試しください。\nエラー詳細: {str(e)}"
+    
+    def _is_work_report(self, message: str) -> bool:
+        """Check if the message is a work report."""
+        report_indicators = [
+            "完了", "終了", "実施", "やった", "行った", "散布", "収穫", "播種", "防除"
+        ]
+        return any(indicator in message for indicator in report_indicators)
+    
+    async def _process_work_report(self, message: str, user_id: str) -> str:
+        """Process a work report message."""
+        try:
+            # Parse the work report
+            parsed_report = self.report_parser.parse_report(message)
+            
+            # Validate the report
+            issues = self.report_parser.validate_report(parsed_report)
+            
+            # Update context with work information
+            if parsed_report.task_name:
+                self.context_manager.update_context(user_id, current_task=parsed_report.task_name)
+            if parsed_report.field_name:
+                self.context_manager.update_context(user_id, current_field=parsed_report.field_name)
+            if parsed_report.crop_name:
+                self.context_manager.update_context(user_id, current_crop=parsed_report.crop_name)
+            
+            # Add to work history
+            work_info = {
+                "task": parsed_report.task_name,
+                "field": parsed_report.field_name,
+                "crop": parsed_report.crop_name,
+                "status": parsed_report.completion_status,
+                "materials": parsed_report.materials_used,
+                "confidence": parsed_report.confidence_score
+            }
+            self.context_manager.add_work_to_history(user_id, work_info)
+            
+            # Format response
+            response_parts = []
+            
+            # Report summary
+            summary = self.report_parser.format_report_summary(parsed_report)
+            response_parts.append(f"📋 作業報告を受付ました:\n{summary}")
+            
+            # Issues and suggestions
+            if issues['errors']:
+                response_parts.append(f"❌ エラー: {', '.join(issues['errors'])}")
+            if issues['warnings']:
+                response_parts.append(f"⚠️ 注意: {', '.join(issues['warnings'])}")
+            if issues['suggestions']:
+                response_parts.append(f"💡 提案: {', '.join(issues['suggestions'])}")
+            
+            # Next task suggestion
+            if parsed_report.next_task_suggestion:
+                response_parts.append(f"🔮 次回作業提案: {parsed_report.next_task_suggestion}")
+            
+            # Confidence score
+            if parsed_report.confidence_score < 0.7:
+                response_parts.append(f"📊 解析信頼度: {parsed_report.confidence_score:.1%} - より詳細な情報があると助かります")
+            
+            return "\n\n".join(response_parts)
+            
+        except Exception as e:
+            logger.error(f"Error processing work report: {e}")
+            return f"作業報告の処理中にエラーが発生しました: {str(e)}"
     
     def get_conversation_history(self) -> List[Dict[str, Any]]:
         """Get the conversation history."""
