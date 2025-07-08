@@ -239,16 +239,18 @@ class AirtableToMongoMigrator:
         }
     
     def _transform_crop_master(self, doc: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform crop master record."""
+        """Transform crop master record based on actual Airtable field names."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "作物名": doc.get("作物名") or doc.get("Crop Name"),
-            "品種": doc.get("品種") or doc.get("Variety"),
-            "生育期間": doc.get("生育期間") or doc.get("Growing Period"),
-            "主要病害虫": doc.get("主要病害虫") or doc.get("Main Pests"),
-            "推奨農薬": doc.get("推奨農薬") or doc.get("Recommended Pesticides"),
-            "栽培ポイント": doc.get("栽培ポイント") or doc.get("Cultivation Points"),
-            "migrated_at": doc.get("migrated_at")
+            "created_time": doc.get("created_time"),
+            "table_source": doc.get("table_source"),
+            "migrated_at": doc.get("migrated_at"),
+            
+            # Map actual Airtable field names to MongoDB document  
+            "作物名": doc.get("作物名"),
+            "分類": doc.get("分類"),
+            "作付計画": doc.get("作付計画"),
+            "Crop Task Template": doc.get("Crop Task Template")
         }
     
     def _transform_pesticide_master(self, doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -269,14 +271,12 @@ class AirtableToMongoMigrator:
         """Transform field data record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "圃場名": doc.get("圃場名") or doc.get("Field Name"),
-            "面積": doc.get("面積") or doc.get("Area"),
-            "所在地": doc.get("所在地") or doc.get("Location"),
-            "土壌タイプ": doc.get("土壌タイプ") or doc.get("Soil Type"),
-            "水源": doc.get("水源") or doc.get("Water Source"),
-            "設備": doc.get("設備") or doc.get("Equipment"),
-            "作付履歴": doc.get("作付履歴") or doc.get("Planting History"),
-            "メモ": doc.get("メモ") or doc.get("Notes"),
+            "圃場ID": doc.get("圃場ID"),
+            "エリア": doc.get("エリア"),
+            "圃場名": doc.get("圃場名"),
+            "面積(ha)": doc.get("面積(ha)"),
+            "作付詳細": doc.get("作付詳細"),
+            "大豆播種管理 2": doc.get("大豆播種管理 2"),
             "migrated_at": doc.get("migrated_at")
         }
     
@@ -284,15 +284,22 @@ class AirtableToMongoMigrator:
         """Transform planting plan record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "計画名": doc.get("計画名") or doc.get("Plan Name"),
-            "圃場": doc.get("圃場") or doc.get("Field"),
-            "作物": doc.get("作物") or doc.get("Crop"),
-            "品種": doc.get("品種") or doc.get("Variety"),
-            "播種予定日": doc.get("播種予定日") or doc.get("Planned Sowing Date"),
-            "収穫予定日": doc.get("収穫予定日") or doc.get("Planned Harvest Date"),
-            "作付面積": doc.get("作付面積") or doc.get("Planting Area"),
-            "予想収量": doc.get("予想収量") or doc.get("Expected Yield"),
-            "ステータス": doc.get("ステータス") or doc.get("Status"),
+            "播種回次": doc.get("播種回次"),
+            "品種名": doc.get("品種名"),
+            "播種予定日": doc.get("播種予定日"),
+            "播種実施日": doc.get("播種実施日"),
+            "播種量/枚数": doc.get("播種量/枚数"),
+            "定植予定日": doc.get("定植予定日"),
+            "作つけ面積 (ha)": doc.get("作つけ面積 (ha)"),
+            "元肥計画 (肥料名 kg/10a)": doc.get("元肥計画 (肥料名 kg/10a)"),
+            "収穫予定": doc.get("収穫予定"),
+            "圃場データ": doc.get("圃場データ"),
+            "圃場名 (from 圃場データ)": doc.get("圃場名 (from 圃場データ)"),
+            "作物マスター": doc.get("作物マスター"),
+            "ID": doc.get("ID"),
+            "資材使用量": doc.get("資材使用量"),
+            "面積(ha) (from 圃場データ)": doc.get("面積(ha) (from 圃場データ)"),
+            "作業タスク 3": doc.get("作業タスク 3"),
             "migrated_at": doc.get("migrated_at")
         }
     
@@ -300,14 +307,10 @@ class AirtableToMongoMigrator:
         """Transform crop task template record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "テンプレート名": doc.get("テンプレート名") or doc.get("Template Name"),
-            "対象作物": doc.get("対象作物") or doc.get("Target Crop"),
-            "作業内容": doc.get("作業内容") or doc.get("Task Content"),
-            "実施タイミング": doc.get("実施タイミング") or doc.get("Timing"),
-            "所要時間": doc.get("所要時間") or doc.get("Duration"),
-            "必要資材": doc.get("必要資材") or doc.get("Required Materials"),
-            "注意事項": doc.get("注意事項") or doc.get("Precautions"),
-            "優先度": doc.get("優先度") or doc.get("Priority"),
+            "タスク名": doc.get("タスク名"),
+            "基準日": doc.get("基準日"),
+            "オフセット(日)": doc.get("オフセット(日)"),
+            "作物マスター": doc.get("作物マスター"),
             "migrated_at": doc.get("migrated_at")
         }
     
@@ -315,18 +318,12 @@ class AirtableToMongoMigrator:
         """Transform work task record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "タスク名": doc.get("タスク名") or doc.get("Task Name"),
-            "圃場": doc.get("圃場") or doc.get("Field"),
-            "作物": doc.get("作物") or doc.get("Crop"),
-            "作業内容": doc.get("作業内容") or doc.get("Work Content"),
-            "担当者": doc.get("担当者") or doc.get("Assignee"),
-            "予定日": doc.get("予定日") or doc.get("Scheduled Date"),
-            "実施日": doc.get("実施日") or doc.get("Completed Date"),
-            "ステータス": doc.get("ステータス") or doc.get("Status"),
-            "所要時間": doc.get("所要時間") or doc.get("Duration"),
-            "使用資材": doc.get("使用資材") or doc.get("Materials Used"),
-            "結果": doc.get("結果") or doc.get("Result"),
-            "メモ": doc.get("メモ") or doc.get("Notes"),
+            "タスク名": doc.get("タスク名"),
+            "関連する作付計画": doc.get("関連する作付計画"),
+            "ステータス": doc.get("ステータス"),
+            "予定日": doc.get("予定日"),
+            "メモ": doc.get("メモ"),
+            "圃場名 (from 圃場データ) (from 関連する作付計画)": doc.get("圃場名 (from 圃場データ) (from 関連する作付計画)"),
             "migrated_at": doc.get("migrated_at")
         }
     
@@ -334,17 +331,8 @@ class AirtableToMongoMigrator:
         """Transform material master record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "資材名": doc.get("資材名") or doc.get("Material Name"),
-            "カテゴリ": doc.get("カテゴリ") or doc.get("Category"),
-            "メーカー": doc.get("メーカー") or doc.get("Manufacturer"),
-            "単位": doc.get("単位") or doc.get("Unit"),
-            "単価": doc.get("単価") or doc.get("Unit Price"),
-            "在庫数": doc.get("在庫数") or doc.get("Stock Quantity"),
-            "安全在庫": doc.get("安全在庫") or doc.get("Safety Stock"),
-            "保管場所": doc.get("保管場所") or doc.get("Storage Location"),
-            "有効期限": doc.get("有効期限") or doc.get("Expiration Date"),
-            "使用方法": doc.get("使用方法") or doc.get("Usage Instructions"),
-            "注意事項": doc.get("注意事項") or doc.get("Precautions"),
+            "資材名": doc.get("資材名"),
+            "資材分類": doc.get("資材分類"),
             "migrated_at": doc.get("migrated_at")
         }
     
@@ -352,17 +340,17 @@ class AirtableToMongoMigrator:
         """Transform material usage log record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "使用日": doc.get("使用日") or doc.get("Usage Date"),
-            "資材": doc.get("資材") or doc.get("Material"),
-            "圃場": doc.get("圃場") or doc.get("Field"),
-            "作物": doc.get("作物") or doc.get("Crop"),
-            "使用量": doc.get("使用量") or doc.get("Quantity Used"),
-            "単位": doc.get("単位") or doc.get("Unit"),
-            "作業者": doc.get("作業者") or doc.get("Worker"),
-            "作業内容": doc.get("作業内容") or doc.get("Work Content"),
-            "コスト": doc.get("コスト") or doc.get("Cost"),
-            "在庫残": doc.get("在庫残") or doc.get("Remaining Stock"),
-            "メモ": doc.get("メモ") or doc.get("Notes"),
+            "使用日": doc.get("使用日"),
+            "資材名": doc.get("資材名"),
+            "圃場名": doc.get("圃場名"),
+            "作物名": doc.get("作物名"),
+            "使用量": doc.get("使用量"),
+            "単位": doc.get("単位"),
+            "単価": doc.get("単価"),
+            "使用金額": doc.get("使用金額"),
+            "作業者": doc.get("作業者"),
+            "作業内容": doc.get("作業内容"),
+            "メモ": doc.get("メモ"),
             "migrated_at": doc.get("migrated_at")
         }
     
@@ -370,16 +358,13 @@ class AirtableToMongoMigrator:
         """Transform worker master record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "作業者名": doc.get("作業者名") or doc.get("Worker Name"),
-            "役割": doc.get("役割") or doc.get("Role"),
-            "所属": doc.get("所属") or doc.get("Department"),
-            "電話番号": doc.get("電話番号") or doc.get("Phone Number"),
-            "メール": doc.get("メール") or doc.get("Email"),
-            "資格・免許": doc.get("資格・免許") or doc.get("Qualifications"),
-            "経験年数": doc.get("経験年数") or doc.get("Years of Experience"),
-            "専門分野": doc.get("専門分野") or doc.get("Specialization"),
-            "勤務形態": doc.get("勤務形態") or doc.get("Work Type"),
-            "メモ": doc.get("メモ") or doc.get("Notes"),
+            "作業者名": doc.get("作業者名"),
+            "役割": doc.get("役割"),
+            "所属": doc.get("所属"),
+            "電話番号": doc.get("電話番号"),
+            "メール": doc.get("メール"),
+            "資格・免許": doc.get("資格・免許"),
+            "メモ": doc.get("メモ"),
             "migrated_at": doc.get("migrated_at")
         }
     
@@ -387,16 +372,10 @@ class AirtableToMongoMigrator:
         """Transform knowledge base record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "タイトル": doc.get("タイトル") or doc.get("Title"),
-            "カテゴリ": doc.get("カテゴリ") or doc.get("Category"),
-            "内容": doc.get("内容") or doc.get("Content"),
-            "タグ": doc.get("タグ") or doc.get("Tags"),
-            "作成者": doc.get("作成者") or doc.get("Author"),
-            "作成日": doc.get("作成日") or doc.get("Created Date"),
-            "更新日": doc.get("更新日") or doc.get("Updated Date"),
-            "対象作物": doc.get("対象作物") or doc.get("Target Crops"),
-            "重要度": doc.get("重要度") or doc.get("Priority"),
-            "参考資料": doc.get("参考資料") or doc.get("References"),
+            "タイトル": doc.get("タイトル"),
+            "カテゴリ": doc.get("カテゴリ"),
+            "詳細": doc.get("詳細"),
+            "登録日": doc.get("登録日"),
             "migrated_at": doc.get("migrated_at")
         }
     
@@ -404,41 +383,40 @@ class AirtableToMongoMigrator:
         """Transform harvest log record."""
         return {
             "airtable_id": doc.get("airtable_id"),
-            "収穫日": doc.get("収穫日") or doc.get("Harvest Date"),
-            "圃場": doc.get("圃場") or doc.get("Field"),
-            "作物": doc.get("作物") or doc.get("Crop"),
-            "品種": doc.get("品種") or doc.get("Variety"),
-            "収穫量": doc.get("収穫量") or doc.get("Harvest Amount"),
-            "単位": doc.get("単位") or doc.get("Unit"),
-            "品質": doc.get("品質") or doc.get("Quality"),
-            "作業者": doc.get("作業者") or doc.get("Worker"),
-            "天候": doc.get("天候") or doc.get("Weather"),
-            "収穫エリア": doc.get("収穫エリア") or doc.get("Harvest Area"),
-            "単価": doc.get("単価") or doc.get("Unit Price"),
-            "売上": doc.get("売上") or doc.get("Revenue"),
-            "備考": doc.get("備考") or doc.get("Notes"),
+            "収穫日": doc.get("収穫日"),
+            "作物名": doc.get("作物名"),
+            "圃場名": doc.get("圃場名"),
+            "サイズ": doc.get("サイズ"),
+            "単価(円/個)": doc.get("単価(円/個)"),
+            "売上": doc.get("売上"),
+            "メモ": doc.get("メモ"),
             "migrated_at": doc.get("migrated_at")
         }
     
     def _transform_daily_log(self, doc: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform daily log record."""
+        """Transform daily log record based on actual Airtable field names."""
+        # Actual field names in the 日報ログ table:
+        # - 'Name' (Type: singleLineText)
+        # - '報告日' (Type: date)
+        # - '報告者' (Type: singleLineText)
+        # - '報告内容' (Type: multilineText)
+        
         return {
             "airtable_id": doc.get("airtable_id"),
-            "日付": doc.get("日付") or doc.get("Date"),
-            "作業者": doc.get("作業者") or doc.get("Worker"),
-            "作業内容": doc.get("作業内容") or doc.get("Work Content"),
-            "圃場": doc.get("圃場") or doc.get("Field"),
-            "作物": doc.get("作物") or doc.get("Crop"),
-            "開始時刻": doc.get("開始時刻") or doc.get("Start Time"),
-            "終了時刻": doc.get("終了時刻") or doc.get("End Time"),
-            "作業時間": doc.get("作業時間") or doc.get("Work Hours"),
-            "天候": doc.get("天候") or doc.get("Weather"),
-            "気温": doc.get("気温") or doc.get("Temperature"),
-            "作業結果": doc.get("作業結果") or doc.get("Work Result"),
-            "問題・課題": doc.get("問題・課題") or doc.get("Issues"),
-            "明日の予定": doc.get("明日の予定") or doc.get("Tomorrow's Plan"),
-            "その他": doc.get("その他") or doc.get("Other Notes"),
-            "migrated_at": doc.get("migrated_at")
+            "created_time": doc.get("created_time"),
+            "table_source": doc.get("table_source"),
+            "migrated_at": doc.get("migrated_at"),
+            
+            # Map actual Airtable field names to MongoDB document
+            "name": doc.get("Name"),
+            "報告日": doc.get("報告日"),
+            "報告者": doc.get("報告者"),
+            "報告内容": doc.get("報告内容"),
+            
+            # Keep original field names for backward compatibility
+            "日付": doc.get("報告日"),  # Map 報告日 to 日付 for compatibility
+            "作業者": doc.get("報告者"),  # Map 報告者 to 作業者 for compatibility
+            "作業内容": doc.get("報告内容"),  # Map 報告内容 to 作業内容 for compatibility
         }
     
     def _transform_generic(self, doc: Dict[str, Any]) -> Dict[str, Any]:
