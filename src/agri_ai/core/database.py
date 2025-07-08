@@ -48,7 +48,7 @@ class MongoDBClient:
     
     async def get_collection(self, collection_name: str):
         """Get a collection from the database."""
-        if not self.database:
+        if self.database is None:
             raise RuntimeError("Database not connected")
         return self.database[collection_name]
     
