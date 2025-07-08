@@ -48,11 +48,15 @@ class GetTodayTasksTool(BaseTool):
             
             task_list = []
             for i, task in enumerate(tasks, 1):
-                task_info = f"{i}. {task.get('圃場', 'N/A')} - {task.get('タスク', 'N/A')}"
+                field_name = task.get('圃場名 (from 圃場データ) (from 関連する作付計画)', 'N/A')
+                task_name = task.get('タスク名', 'N/A')
+                task_info = f"{i}. {field_name} - {task_name}"
                 status = task.get('ステータス', 'N/A')
                 task_info += f" (状態: {status})"
-                if task.get('予定時刻'):
-                    task_info += f" 予定時刻: {task.get('予定時刻')}"
+                if task.get('予定日'):
+                    task_info += f" 予定日: {task.get('予定日')}"
+                if task.get('メモ'):
+                    task_info += f" メモ: {task.get('メモ')}"
                 task_list.append(task_info)
             
             return f"{worker_id}さんの{date}のタスク:\n" + "\n".join(task_list)
@@ -142,27 +146,34 @@ class GetFieldStatusTool(BaseTool):
             
             status_info = [f"圃場: {field_name}"]
             
-            # Current crop information
-            current_crop = field_data.get("現在の作付", {})
-            if current_crop:
-                crop_name = current_crop.get("作物", "N/A")
-                variety = current_crop.get("品種", "N/A")
-                status_info.append(f"作物: {crop_name} ({variety})")
-                
-                if current_crop.get("播種日"):
-                    status_info.append(f"播種日: {current_crop.get('播種日')}")
-                if current_crop.get("収穫予定"):
-                    status_info.append(f"収穫予定: {current_crop.get('収穫予定')}")
+            # Basic field information
+            if field_data.get("圃場ID"):
+                status_info.append(f"圃場ID: {field_data.get('圃場ID')}")
+            if field_data.get("エリア"):
+                status_info.append(f"エリア: {field_data.get('エリア')}")
+            if field_data.get("面積(ha)"):
+                status_info.append(f"面積: {field_data.get('面積(ha)')} ha")
             
-            # Recent pesticide applications
-            pesticide_history = field_data.get("防除履歴", [])
-            if pesticide_history:
-                recent_applications = pesticide_history[-2:]  # Last 2 applications
-                status_info.append("最近の防除履歴:")
-                for app in recent_applications:
-                    date = app.get("実施日", "N/A")
-                    pesticides = ", ".join(app.get("使用農薬", []))
-                    status_info.append(f"  - {date}: {pesticides}")
+            # Get related planting plan information
+            planting_details = field_data.get("作付詳細", [])
+            if planting_details:
+                status_info.append("関連作付計画:")
+                for detail_id in planting_details:
+                    status_info.append(f"  - 作付計画ID: {detail_id}")
+            
+            # Get recent material usage if available
+            try:
+                material_usage = await self.agri_db.get_recent_material_usage(field_name)
+                if material_usage:
+                    status_info.append("最近の資材使用:")
+                    for usage in material_usage[-3:]:  # Last 3 usages
+                        date = usage.get("使用日", "N/A")
+                        material = usage.get("資材名", "N/A")
+                        amount = usage.get("使用量", "N/A")
+                        unit = usage.get("単位", "")
+                        status_info.append(f"  - {date}: {material} {amount}{unit}")
+            except:
+                pass  # Skip if method doesn't exist
             
             return "\n".join(status_info)
             
@@ -202,16 +213,28 @@ class RecommendPesticideTool(BaseTool):
             if not recommendations:
                 return f"{field_name}の{crop}に対する農薬の推奨情報がありません。"
             
-            rec_info = [f"{field_name}の{crop}に対する農薬推奨:"]
+            rec_info = [f"{field_name}の{crop}に対する資材推奨:"]
             
             for i, rec in enumerate(recommendations, 1):
-                pesticide_name = rec.get("農薬名", "N/A")
-                purpose = rec.get("用途", "N/A")
-                dilution = rec.get("希釈倍率", "N/A")
+                material_name = rec.get("資材名", "N/A")
+                classification = rec.get("資材分類", "N/A")
                 
-                rec_info.append(f"{i}. {pesticide_name}")
-                rec_info.append(f"   用途: {purpose}")
-                rec_info.append(f"   希釈倍率: {dilution}倍")
+                rec_info.append(f"{i}. {material_name}")
+                rec_info.append(f"   分類: {classification}")
+            
+            # Get recent usage history for this field
+            try:
+                recent_usage = await self.agri_db.get_recent_material_usage(field_name)
+                if recent_usage:
+                    rec_info.append("\n最近の使用履歴:")
+                    for usage in recent_usage[-2:]:  # Last 2 usages
+                        date = usage.get("使用日", "N/A")
+                        material = usage.get("資材名", "N/A")
+                        amount = usage.get("使用量", "N/A")
+                        unit = usage.get("単位", "")
+                        rec_info.append(f"  - {date}: {material} {amount}{unit}")
+            except:
+                pass  # Skip if method doesn't exist
             
             rec_info.append("\n注意: 天候条件と前回散布からの間隔を確認してください。")
             

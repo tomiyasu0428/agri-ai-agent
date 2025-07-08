@@ -70,37 +70,33 @@ class AgriDatabase:
     
     async def get_today_tasks(self, worker_id: str, date: str) -> List[Dict[str, Any]]:
         """Get today's tasks for a specific worker."""
-        collection = await self.mongo_client.get_collection("daily_schedules")
+        collection = await self.mongo_client.get_collection("作業タスク")
         
+        # Query for tasks on the specified date
         query = {
-            "日付": date,
-            "圃場別予定.作業者": worker_id
+            "予定日": date
         }
         
-        document = await collection.find_one(query)
-        if not document:
-            return []
+        cursor = collection.find(query)
+        tasks = await cursor.to_list(length=None)
         
-        # Filter tasks for the specific worker
-        worker_tasks = [
-            task for task in document.get("圃場別予定", [])
-            if task.get("作業者") == worker_id
-        ]
-        
-        return worker_tasks
+        # Note: Current schema doesn't have direct worker assignment
+        # Return all tasks for the date - can be filtered later
+        logger.info(f"Found {len(tasks)} tasks for {date}")
+        return tasks
     
     async def complete_task(self, task_id: str, completion_data: Dict[str, Any]) -> bool:
         """Mark a task as completed and log the completion."""
-        collection = await self.mongo_client.get_collection("daily_schedules")
+        collection = await self.mongo_client.get_collection("作業タスク")
         
         try:
             result = await collection.update_one(
-                {"圃場別予定._id": task_id},
+                {"airtable_id": task_id},
                 {
                     "$set": {
-                        "圃場別予定.$.ステータス": "完了",
-                        "圃場別予定.$.完了時刻": completion_data.get("完了時刻"),
-                        "圃場別予定.$.実施内容": completion_data.get("実施内容")
+                        "ステータス": "✅ 完了",
+                        "完了時刻": completion_data.get("完了時刻"),
+                        "実施内容": completion_data.get("実施内容")
                     }
                 }
             )
@@ -118,7 +114,7 @@ class AgriDatabase:
     
     async def get_field_status(self, field_name: str) -> Optional[Dict[str, Any]]:
         """Get current status of a specific field."""
-        collection = await self.mongo_client.get_collection("field_management")
+        collection = await self.mongo_client.get_collection("圃場データ")
         
         query = {"圃場名": field_name}
         field_data = await collection.find_one(query)
@@ -139,69 +135,45 @@ class AgriDatabase:
         if not field_data:
             return []
         
-        # Get pesticide history for rotation logic
-        pesticide_history = field_data.get("防除履歴", [])
+        # Get general material recommendations (filter by material classification)
+        material_collection = await self.mongo_client.get_collection("資材マスター")
+        query = {"資材分類": "農薬"}
+        cursor = material_collection.find(query)
+        recommendations = await cursor.to_list(length=None)
         
-        # Simple recommendation logic (to be enhanced)
-        recommendations = []
+        logger.info(f"Found {len(recommendations)} material recommendations for {crop}")
+        return recommendations
+    
+    async def get_recent_material_usage(self, field_name: str) -> List[Dict[str, Any]]:
+        """Get recent material usage for a specific field."""
+        collection = await self.mongo_client.get_collection("資材使用ログ")
         
-        # Get last used pesticides
-        recent_pesticides = [
-            entry.get("使用農薬", [])
-            for entry in pesticide_history[-3:]  # Last 3 applications
-        ]
+        query = {"圃場名": field_name}
+        cursor = collection.find(query).sort("使用日", -1).limit(10)
+        usage_logs = await cursor.to_list(length=None)
         
-        flattened_recent = [item for sublist in recent_pesticides for item in sublist]
-        
-        # Example pesticide rotation logic
-        available_pesticides = [
-            {"農薬名": "クプロシールド", "用途": "防除", "希釈倍率": 1000},
-            {"農薬名": "アグロケア", "用途": "防除", "希釈倍率": 800},
-            {"農薬名": "バイオガード", "用途": "防除", "希釈倍率": 1200}
-        ]
-        
-        # Recommend pesticides not recently used
-        for pesticide in available_pesticides:
-            if pesticide["農薬名"] not in flattened_recent:
-                recommendations.append(pesticide)
-        
-        return recommendations[:2]  # Return top 2 recommendations
+        logger.info(f"Found {len(usage_logs)} recent material usage logs for {field_name}")
+        return usage_logs
     
     async def schedule_next_task(self, field_name: str, task_type: str, days_ahead: int = 7) -> bool:
         """Schedule next task automatically."""
         from datetime import datetime, timedelta
         
-        collection = await self.mongo_client.get_collection("daily_schedules")
+        collection = await self.mongo_client.get_collection("作業タスク")
         
         next_date = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
         
         new_task = {
-            "圃場": field_name,
-            "作業者": "未定",
-            "タスク": task_type,
-            "ステータス": "未着手",
-            "予定時刻": f"{next_date}T09:00:00Z",
+            "タスク名": task_type,
+            "予定日": next_date,
+            "ステータス": "🗓️ 予定",
+            "メモ": "自動生成されたタスク",
+            "migrated_at": datetime.now().isoformat(),
             "自動生成": True
         }
         
         try:
-            # Check if schedule document exists for the date
-            existing_schedule = await collection.find_one({"日付": next_date})
-            
-            if existing_schedule:
-                # Add task to existing schedule
-                await collection.update_one(
-                    {"日付": next_date},
-                    {"$push": {"圃場別予定": new_task}}
-                )
-            else:
-                # Create new schedule document
-                new_schedule = {
-                    "日付": next_date,
-                    "圃場別予定": [new_task]
-                }
-                await collection.insert_one(new_schedule)
-            
+            await collection.insert_one(new_task)
             logger.info(f"Scheduled next {task_type} for {field_name} on {next_date}")
             return True
             
