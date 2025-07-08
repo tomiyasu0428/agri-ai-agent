@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     line_channel_access_token: Optional[str] = Field(None, env="LINE_CHANNEL_ACCESS_TOKEN")
     line_channel_secret: Optional[str] = Field(None, env="LINE_CHANNEL_SECRET")
     
+    # Airtable
+    airtable_api_key: Optional[str] = Field(None, env="AIRTABLE_API_KEY")
+    airtable_base_id: Optional[str] = Field(None, env="AIRTABLE_BASE_ID")
+    
     # Google Cloud
     google_cloud_project: Optional[str] = Field(None, env="GOOGLE_CLOUD_PROJECT")
     google_application_credentials: Optional[str] = Field(None, env="GOOGLE_APPLICATION_CREDENTIALS")
