@@ -5,7 +5,7 @@ LangChain agent for agricultural AI system.
 import logging
 from typing import Dict, Any, List, Optional
 from langchain.agents import AgentType, initialize_agent
-from langchain.chat_models import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
 from langchain.tools import BaseTool
 from langchain.schema import SystemMessage
@@ -31,10 +31,10 @@ class AgriAIAgent:
         self.context_manager = ContextManager()
         
         # Initialize LLM
-        self.llm = ChatOpenAI(
-            model_name="gpt-4",
+        self.llm = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash-exp",
             temperature=0.1,
-            openai_api_key=self.settings.openai_api_key
+            google_api_key=self.settings.google_api_key
         )
         
         # Initialize memory
@@ -76,10 +76,10 @@ class AgriAIAgent:
         return initialize_agent(
             tools=self.tools,
             llm=self.llm,
-            agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION,
+            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
             memory=self.memory,
             verbose=True,
-            system_message=system_message,
+            agent_kwargs={"system_message": system_message},
             handle_parsing_errors=True
         )
     

@@ -22,13 +22,13 @@ class GetTodayTasksInput(BaseModel):
 class GetTodayTasksTool(BaseTool):
     """Tool to get today's tasks for a worker."""
     
-    name = "get_today_tasks"
-    description = "Get today's agricultural tasks for a specific worker"
-    args_schema = GetTodayTasksInput
+    name: str = "get_today_tasks"
+    description: str = "Get today's agricultural tasks for a specific worker"
+    args_schema: type = GetTodayTasksInput
+    agri_db: AgriDatabase
     
     def __init__(self, agri_db: AgriDatabase):
-        super().__init__()
-        self.agri_db = agri_db
+        super().__init__(agri_db=agri_db)
     
     def _run(self, worker_id: str, date: Optional[str] = None) -> str:
         """Get today's tasks synchronously (not recommended for production)."""
@@ -76,13 +76,13 @@ class CompleteTaskInput(BaseModel):
 class CompleteTaskTool(BaseTool):
     """Tool to mark a task as completed."""
     
-    name = "complete_task"
-    description = "Mark an agricultural task as completed"
-    args_schema = CompleteTaskInput
+    name: str = "complete_task"
+    description: str = "Mark an agricultural task as completed"
+    args_schema: type = CompleteTaskInput
+    agri_db: AgriDatabase
     
     def __init__(self, agri_db: AgriDatabase):
-        super().__init__()
-        self.agri_db = agri_db
+        super().__init__(agri_db=agri_db)
     
     def _run(self, task_description: str, field_name: str, completion_notes: Optional[str] = None) -> str:
         """Complete task synchronously."""
@@ -123,13 +123,13 @@ class GetFieldStatusInput(BaseModel):
 class GetFieldStatusTool(BaseTool):
     """Tool to get field status information."""
     
-    name = "get_field_status"
-    description = "Get current status and information about a specific field"
-    args_schema = GetFieldStatusInput
+    name: str = "get_field_status"
+    description: str = "Get current status and information about a specific field"
+    args_schema: type = GetFieldStatusInput
+    agri_db: AgriDatabase
     
     def __init__(self, agri_db: AgriDatabase):
-        super().__init__()
-        self.agri_db = agri_db
+        super().__init__(agri_db=agri_db)
     
     def _run(self, field_name: str) -> str:
         """Get field status synchronously."""
@@ -192,13 +192,13 @@ class RecommendPesticideInput(BaseModel):
 class RecommendPesticideTool(BaseTool):
     """Tool to recommend pesticides based on field conditions."""
     
-    name = "recommend_pesticide"
-    description = "Recommend appropriate pesticides for a field based on crop and conditions"
-    args_schema = RecommendPesticideInput
+    name: str = "recommend_pesticide"
+    description: str = "Recommend appropriate pesticides for a field based on crop and conditions"
+    args_schema: type = RecommendPesticideInput
+    agri_db: AgriDatabase
     
     def __init__(self, agri_db: AgriDatabase):
-        super().__init__()
-        self.agri_db = agri_db
+        super().__init__(agri_db=agri_db)
     
     def _run(self, field_name: str, crop: str, issue: Optional[str] = None) -> str:
         """Recommend pesticides synchronously."""

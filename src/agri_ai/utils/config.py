@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = Field(..., env="OPENAI_API_KEY")
     
+    # Google AI
+    google_api_key: str = Field(..., env="GOOGLE_API_KEY")
+    
     # LINE Bot
     line_channel_access_token: Optional[str] = Field(None, env="LINE_CHANNEL_ACCESS_TOKEN")
     line_channel_secret: Optional[str] = Field(None, env="LINE_CHANNEL_SECRET")
