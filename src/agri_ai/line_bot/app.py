@@ -16,10 +16,13 @@ from linebot.models import (
     FollowEvent, UnfollowEvent, JoinEvent, LeaveEvent
 )
 
-from ..core.agent import AgentManager
+from ..core.agent import AgentManager, OptimizedAgentManager
 from ..core.database import MongoDBClient, AgriDatabase
+from ..core.database_pool import get_database_pool
+from ..core.optimized_database import OptimizedAgriDatabase
+from ..core.agent_pool import get_agent_pool
 from ..utils.config import get_settings
-from .message_handler import LineMessageHandler
+from .message_handler import LineMessageHandler, OptimizedLineMessageHandler
 from .utils import format_agent_response, create_error_message
 
 # Configure logging
@@ -54,18 +57,19 @@ async def lifespan(app: FastAPI):
         line_bot_api = LineBotApi(settings.line_channel_access_token)
         webhook_handler = WebhookHandler(settings.line_channel_secret)
         
-        # Initialize MongoDB connection
-        mongo_client = MongoDBClient()
-        await mongo_client.connect()
+        # Initialize optimized database pool
+        db_pool = await get_database_pool()
+        optimized_db = OptimizedAgriDatabase(db_pool)
         
-        # Initialize database
-        agri_db = AgriDatabase(mongo_client)
+        # Initialize agent pool
+        agent_pool = await get_agent_pool()
         
-        # Initialize agent manager
-        agent_manager = AgentManager(agri_db)
+        # Initialize optimized agent manager
+        agent_manager = OptimizedAgentManager(agent_pool)
         
-        # Initialize message handler
-        message_handler = LineMessageHandler(agent_manager, line_bot_api)
+        # Initialize optimized message handler
+        message_handler = OptimizedLineMessageHandler(agent_manager, line_bot_api)
+        await message_handler.initialize()
         
         # Setup webhook handlers
         setup_webhook_handlers()
@@ -81,8 +85,17 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("🛑 Shutting down Agricultural AI LINE Bot...")
     
-    if mongo_client:
-        await mongo_client.disconnect()
+    # Shutdown message handler
+    if message_handler:
+        await message_handler.shutdown()
+    
+    # Shutdown agent pool
+    from ..core.agent_pool import shutdown_agent_pool
+    await shutdown_agent_pool()
+    
+    # Shutdown database pool
+    from ..core.database_pool import close_database_pool
+    await close_database_pool()
     
     logger.info("✅ Agricultural AI LINE Bot shut down successfully!")
 
@@ -204,20 +217,75 @@ def setup_webhook_handlers():
 
 @app.get("/stats")
 async def get_stats():
-    """Get bot statistics."""
+    """Get comprehensive bot statistics."""
     try:
         if not agent_manager:
             raise HTTPException(status_code=503, detail="Agent manager not initialized")
         
-        stats = agent_manager.get_agent_stats()
+        # エージェント統計
+        agent_stats = agent_manager.get_agent_stats()
+        
+        # メッセージハンドラー統計
+        processing_stats = message_handler.get_processing_stats()
+        
+        # データベース統計
+        db_stats = {}
+        if hasattr(optimized_db, 'get_database_stats'):
+            db_stats = await optimized_db.get_database_stats()
+        
         return {
             "status": "ok",
-            "timestamp": asyncio.get_event_loop().time(),
-            "stats": stats
+            "timestamp": datetime.now().isoformat(),
+            "agent_stats": agent_stats,
+            "processing_stats": processing_stats,
+            "database_stats": db_stats
         }
     
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/stats/user/{user_id}")
+async def get_user_stats(user_id: str):
+    """Get user-specific statistics."""
+    try:
+        if not message_handler:
+            raise HTTPException(status_code=503, detail="Message handler not initialized")
+        
+        user_stats = message_handler.get_user_stats(user_id)
+        if not user_stats:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return {
+            "status": "ok",
+            "timestamp": datetime.now().isoformat(),
+            "user_stats": user_stats
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user stats: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/admin/cache/clear")
+async def clear_cache():
+    """Clear all caches."""
+    try:
+        # メッセージハンドラーのキャッシュをクリア
+        if message_handler:
+            message_handler.clear_cache()
+        
+        # データベースキャッシュをクリア
+        if hasattr(optimized_db, 'clear_cache'):
+            await optimized_db.clear_cache()
+        
+        return {"status": "ok", "message": "Caches cleared successfully"}
+    
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -3,26 +3,51 @@ LangChain agent for agricultural AI system.
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+import time
+import asyncio
+from typing import Dict, Any, List, Optional, Protocol
 from langchain.agents import AgentType, initialize_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.tools import BaseTool
 from langchain.schema import SystemMessage
 
 from ..tools.agricultural_tools import create_agricultural_tools
-from ..core.database import AgriDatabase
+from ..exceptions import AgentProcessingError, ConfigurationError
 from ..utils.config import get_settings
+from ..utils.error_handling import AgentErrorHandler
 from ..nlp.report_parser import WorkReportParser
 from ..nlp.context_manager import ContextManager
 
 logger = logging.getLogger(__name__)
 
 
+class DatabaseProtocol(Protocol):
+    """データベースインターフェース"""
+    async def get_today_tasks(self, worker_id: str, date: str) -> List[Dict[str, Any]]:
+        ...
+    
+    async def complete_task(self, task_id: str, completion_data: Dict[str, Any]) -> bool:
+        ...
+    
+    async def get_field_status(self, field_name: str) -> Optional[Dict[str, Any]]:
+        ...
+    
+    async def get_pesticide_recommendations(self, field_name: str, crop: str) -> List[Dict[str, Any]]:
+        ...
+    
+    async def get_recent_material_usage(self, field_name: str, days: int = 30) -> List[Dict[str, Any]]:
+        ...
+    
+    async def schedule_next_task(self, field_name: str, task_type: str, days_offset: int) -> str:
+        ...
+
+
 class AgriAIAgent:
     """Agricultural AI Agent using LangChain."""
     
-    def __init__(self, agri_db: AgriDatabase):
+    def __init__(self, agri_db: DatabaseProtocol):
         self.agri_db = agri_db
         self.settings = get_settings()
         
@@ -30,17 +55,14 @@ class AgriAIAgent:
         self.report_parser = WorkReportParser()
         self.context_manager = ContextManager()
         
-        # Initialize LLM
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
-            temperature=0.1,
-            google_api_key=self.settings.google_api_key
-        )
+        # Initialize LLM based on available API keys
+        self.llm = self._create_llm()
         
-        # Initialize memory
+        # Initialize memory with size limit
         self.memory = ConversationBufferMemory(
             memory_key="chat_history",
-            return_messages=True
+            return_messages=True,
+            max_token_limit=self.settings.max_conversation_history
         )
         
         # Create tools
@@ -48,6 +70,39 @@ class AgriAIAgent:
         
         # Initialize agent
         self.agent = self._create_agent()
+        
+        # Performance tracking
+        self.total_requests = 0
+        self.total_processing_time = 0.0
+        self.error_count = 0
+    
+    def _create_llm(self):
+        """LLMを作成（設定に基づいて適切なプロバイダーを選択）"""
+        try:
+            ai_config = self.settings.get_ai_model_config()
+            
+            if ai_config["provider"] == "google" and self.settings.google_api_key:
+                logger.info("Using Google Gemini model")
+                return ChatGoogleGenerativeAI(
+                    model=ai_config["model"],
+                    temperature=ai_config["temperature"],
+                    google_api_key=ai_config["api_key"],
+                    request_timeout=ai_config["timeout"]
+                )
+            elif ai_config["provider"] == "openai" and self.settings.openai_api_key:
+                logger.info("Using OpenAI model")
+                return ChatOpenAI(
+                    model=ai_config["model"],
+                    temperature=ai_config["temperature"],
+                    openai_api_key=ai_config["api_key"],
+                    request_timeout=ai_config["timeout"]
+                )
+            else:
+                raise ConfigurationError("有効なAI APIキーが設定されていません")
+                
+        except Exception as e:
+            logger.error(f"Failed to create LLM: {e}")
+            raise ConfigurationError(f"LLM初期化に失敗しました: {str(e)}")
     
     def _create_agent(self):
         """Create the LangChain agent with agricultural tools."""
@@ -83,8 +138,12 @@ class AgriAIAgent:
             handle_parsing_errors=True
         )
     
+    @AgentErrorHandler.handle_processing_error(logger)
     async def process_message(self, user_message: str, user_id: str) -> str:
         """Process a user message and return AI response."""
+        start_time = time.time()
+        self.total_requests += 1
+        
         try:
             # Add message to conversation history
             self.context_manager.add_question_to_history(user_id, user_message)
@@ -102,24 +161,42 @@ class AgriAIAgent:
             
             # Check if message is a work report
             if self._is_work_report(resolved_message):
-                return await self._process_work_report(resolved_message, user_id)
+                response = await self._process_work_report(resolved_message, user_id)
+            else:
+                # Prepare contextualized message
+                context_info = ""
+                if relevant_context:
+                    context_info = f"文脈情報: {relevant_context}\n"
+                
+                contextualized_message = f"ユーザーID: {user_id}\n{context_info}メッセージ: {resolved_message}"
+                
+                # Get agent response with timeout
+                try:
+                    response = await asyncio.wait_for(
+                        self.agent.arun(input=contextualized_message),
+                        timeout=self.settings.request_timeout_seconds
+                    )
+                except asyncio.TimeoutError:
+                    raise AgentProcessingError("応答がタイムアウトしました。もう一度お試しください。")
             
-            # Prepare contextualized message
-            context_info = ""
-            if relevant_context:
-                context_info = f"文脈情報: {relevant_context}\n"
+            # Update performance metrics
+            processing_time = time.time() - start_time
+            self.total_processing_time += processing_time
             
-            contextualized_message = f"ユーザーID: {user_id}\n{context_info}メッセージ: {resolved_message}"
-            
-            # Get agent response
-            response = await self.agent.arun(input=contextualized_message)
-            
-            logger.info(f"Agent response for user {user_id}: {response}")
+            logger.info(f"Agent response for user {user_id} (took {processing_time:.2f}s): {response[:100]}...")
             return response
             
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
-            return f"申し訳ございません。処理中にエラーが発生しました。もう一度お試しください。\nエラー詳細: {str(e)}"
+            self.error_count += 1
+            processing_time = time.time() - start_time
+            self.total_processing_time += processing_time
+            
+            logger.error(f"Error processing message for user {user_id}: {e}")
+            
+            if isinstance(e, AgentProcessingError):
+                return str(e)
+            else:
+                return f"申し訳ございません。処理中にエラーが発生しました。もう一度お試しください。"
     
     def _is_work_report(self, message: str) -> bool:
         """Check if the message is a work report."""
@@ -221,10 +298,76 @@ class AgriAIAgent:
             logger.error(f"Error adding user context: {e}")
 
 
-class AgentManager:
-    """Manages multiple agent instances for different users."""
+class OptimizedAgentManager:
+    """最適化されたエージェントマネージャー（プール使用）"""
     
-    def __init__(self, agri_db: AgriDatabase):
+    def __init__(self, agent_pool):
+        self.agent_pool = agent_pool
+    
+    async def get_agent(self, user_id: str) -> AgriAIAgent:
+        """エージェントを取得"""
+        return await self.agent_pool.get_agent(user_id)
+    
+    def remove_agent(self, user_id: str):
+        """エージェントを削除"""
+        # プールが自動管理するため、特別な処理は不要
+        logger.info(f"Agent removal requested for user {user_id}")
+    
+    def get_active_users(self) -> List[str]:
+        """アクティブユーザーのリストを取得"""
+        return list(self.agent_pool.get_active_users())
+    
+    async def process_user_message(self, user_id: str, message: str) -> str:
+        """ユーザーメッセージを処理"""
+        start_time = time.time()
+        error_occurred = False
+        
+        try:
+            agent = await self.get_agent(user_id)
+            response = await agent.process_message(message, user_id)
+            return response
+            
+        except Exception as e:
+            error_occurred = True
+            logger.error(f"Error processing message for user {user_id}: {e}")
+            return f"申し訳ございません。処理中にエラーが発生しました。もう一度お試しください。"
+            
+        finally:
+            # 統計を更新
+            processing_time = time.time() - start_time
+            self.agent_pool.update_agent_stats(user_id, processing_time, error_occurred)
+    
+    def clear_user_memory(self, user_id: str):
+        """ユーザーメモリをクリア"""
+        if user_id in self.agent_pool.agents:
+            agent = self.agent_pool.agents[user_id]
+            if hasattr(agent, 'clear_memory'):
+                agent.clear_memory()
+                logger.info(f"Cleared memory for user {user_id}")
+    
+    def get_agent_stats(self) -> Dict[str, Any]:
+        """エージェント統計を取得"""
+        pool_stats = self.agent_pool.get_pool_stats()
+        
+        # 個別エージェント情報も追加
+        agent_details = {}
+        for user_id in self.agent_pool.get_active_users():
+            agent_info = self.agent_pool.get_agent_info(user_id)
+            if agent_info:
+                agent_details[user_id] = agent_info
+        
+        return {
+            "pool_stats": pool_stats,
+            "agent_details": agent_details,
+            "total_agents": pool_stats["active_agents"],
+            "active_users": list(self.agent_pool.get_active_users())
+        }
+
+
+class AgentManager:
+    """Manages multiple agent instances for different users (legacy support)."""
+    
+    def __init__(self, agri_db: DatabaseProtocol):
         self.agri_db = agri_db
         self.agents: Dict[str, AgriAIAgent] = {}
     
