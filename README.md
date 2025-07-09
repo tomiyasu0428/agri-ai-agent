@@ -12,9 +12,8 @@ LangChainとMongoDBを活用したAI農業管理システム。農業従事者�
 
 ## 技術スタック
 
-- **AIフレームワーク**: LangChain（AIエージェント統合）
-- **データベース**: MongoDB Atlas（スケーラブルなデータストレージ）
-- **データ統合**: Airtable API（既存データ移行）
+- **AIフレームワーク**: LangChain
+- **データベース**: MongoDB Atlas
 - **言語**: Python 3.8+
 - **主要ライブラリ**: PyMongo, Motor, Pydantic, Python-dotenv
 
