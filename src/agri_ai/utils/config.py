@@ -208,7 +208,7 @@ class Settings(BaseSettings):
         if self.google_api_key:
             config.update({
                 "provider": "google",
-                "model": "gemini-2.0-flash-exp",
+                "model": "gemini-2.5-flash",
                 "api_key": self.google_api_key
             })
         elif self.openai_api_key:
