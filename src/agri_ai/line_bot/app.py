@@ -143,18 +143,23 @@ async def line_webhook(request: Request, background_tasks: BackgroundTasks):
         
         # Get request body
         body = await request.body()
+        body_text = body.decode('utf-8')
+        
+        logger.info(f"📥 Webhook received: {body_text[:200]}...")
+        logger.info(f"🔑 Signature: {signature[:20]}...")
         
         # Handle webhook
         try:
-            webhook_handler.handle(body.decode('utf-8'), signature)
+            webhook_handler.handle(body_text, signature)
+            logger.info("✅ Webhook handled successfully")
         except InvalidSignatureError:
-            logger.error("Invalid signature")
+            logger.error("❌ Invalid signature")
             raise HTTPException(status_code=400, detail="Invalid signature")
         
         return JSONResponse({"status": "ok"})
         
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
+        logger.error(f"❌ Webhook error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -166,11 +171,14 @@ def setup_webhook_handlers():
     def handle_text_message(event: MessageEvent):
         """Handle text messages."""
         try:
+            logger.info(f"💬 Text message received: {event.message.text}")
+            logger.info(f"👤 User ID: {event.source.user_id}")
+            
             # Process message in background
             asyncio.create_task(message_handler.handle_text_message(event))
             
         except Exception as e:
-            logger.error(f"Error handling text message: {e}")
+            logger.error(f"❌ Error handling text message: {e}")
             
             # Send error message
             try:
@@ -180,7 +188,7 @@ def setup_webhook_handlers():
                     TextSendMessage(text=error_message)
                 )
             except LineBotApiError as api_error:
-                logger.error(f"Failed to send error message: {api_error}")
+                logger.error(f"❌ Failed to send error message: {api_error}")
 
     @webhook_handler.add(FollowEvent)
     def handle_follow(event: FollowEvent):
